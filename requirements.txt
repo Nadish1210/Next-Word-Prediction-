@@ -1,8 +1,4 @@
-
+streamlit
 fastapi
-uvicorn
 tensorflow
 numpy
-pickle-mixin
-streamlit
-requests
