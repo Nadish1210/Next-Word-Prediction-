@@ -1,3 +1,4 @@
+
 import os
 import pickle
 import numpy as np
@@ -14,18 +15,17 @@ DATA_FILE = "data.txt"
 
 api = FastAPI()
 
-# -------- TRAIN MODEL --------
 def train_model():
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         text = f.read().lower()
 
     text = re.sub(r'[^a-z\s]', '', text)
 
-    tokenizer = Tokenizer()
+    tokenizer = Tokenizer(num_words=5000, oov_token="<OOV>")
     tokenizer.fit_on_texts([text])
 
     sequences = []
-    for line in text.split("."):
+    for line in text.splitlines():
         tokens = tokenizer.texts_to_sequences([line])[0]
         for i in range(2, len(tokens)):
             sequences.append(tokens[:i+1])
@@ -45,7 +45,7 @@ def train_model():
     ])
 
     model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-    model.fit(X, y, epochs=30, verbose=0)
+    model.fit(X, y, epochs=15, verbose=0)
 
     model.save(MODEL_FILE)
     with open(TOKENIZER_FILE, "wb") as f:
@@ -53,26 +53,21 @@ def train_model():
 
     return model, tokenizer, max_len
 
-# -------- LOAD OR TRAIN --------
 if os.path.exists(MODEL_FILE):
     model = load_model(MODEL_FILE)
     tokenizer, max_len = pickle.load(open(TOKENIZER_FILE, "rb"))
 else:
     model, tokenizer, max_len = train_model()
 
-# -------- PREDICTION --------
-def predict_word(text):
+def predict_word(text, top_k=5):
     seq = tokenizer.texts_to_sequences([text.lower()])[0]
     seq = pad_sequences([seq], maxlen=max_len-1, padding='pre')
-    pred = model.predict(seq, verbose=0)
-    index = np.argmax(pred)
+    pred = model.predict(seq, verbose=0)[0]
 
-    for word, idx in tokenizer.word_index.items():
-        if idx == index:
-            return word
-    return "No prediction"
+    top_indices = np.argsort(pred)[-top_k:][::-1]
+    words = [tokenizer.index_word.get(i, "") for i in top_indices]
+    return words
 
-# -------- FASTAPI ENDPOINT --------
 @api.get("/predict")
-def predict_api(text: str):
-    return {"next_word": predict_word(text)}
+def predict_api(text: str, top_k: int = 5):
+    return {"next_words": predict_word(text, top_k)}
